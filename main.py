@@ -11,7 +11,7 @@ import model
 from more_itertools import chunked
 import random
 from collections import defaultdict
-
+import chainer.serializers as S
 
 
 import datetime
@@ -178,7 +178,7 @@ def dump_current_scores_of_devtest(args,m,xp):
 		scores, accuracy = list(),list()
 		for batch in  chunked(current_data, args.test_batch_size):
 			with chainer.using_config('train',False), chainer.no_backprop_mode():
-				current_score = m.get_scores(batch,train_link,gold_relations,aux_link,xp,mode)
+					current_score = m.get_scores(batch,train_link,gold_relations,aux_link,xp,mode)
 			for v,(h,r,t,l) in zip(current_score.data, batch):
 				values = (h,r,t,l,v)
 				values = map(str,values)
@@ -211,7 +211,7 @@ def main(args):
 		trLoss,Ntr = train(args,m,xp,opt)
 		trace('epoch:',epoch,'tr Loss:',trLoss,Ntr)
 		dump_current_scores_of_devtest(args,m,xp)
-
+	# S.save_npz('head-1000-avg',model.Model)
 
 #----------------------------------------------------------------------------
 """
@@ -249,11 +249,11 @@ def argument():
 
 	# sizes
 	p.add_argument('--train_size',  	'-trS',  default=1000,       type=int)
-	p.add_argument('--batch_size',		'-bS',	 default=5000,        type=int)
+	p.add_argument('--batch_size',		'-bS',	 default=500,        type=int)
 	p.add_argument('--test_batch_size', '-tbS',  default=20000,        type=int)
 	p.add_argument('--sample_size',		'-sS',  default=64,        type=int)
 	p.add_argument('--pool_size',		'-pS',  default=128*5,      type=int)
-	p.add_argument('--epoch_size',		'-eS',  default=10000,       type=int)
+	p.add_argument('--epoch_size',		'-eS',  default=100,       type=int)
 
 	# optimization
 	p.add_argument('--opt_model',   "-Op",  default="Adam")

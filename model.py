@@ -9,6 +9,9 @@ from collections import defaultdict
 import sys,random
 
 #tạo lớp Module từ module chainer.Chain để có thể có những tính năng quản lý tham số và tối ưu
+import numpy as np
+
+
 class Module(chainer.Chain):
 	def __init__(self, dim):
 		super(Module, self).__init__(	# gọi hàm tạo của lớp cha tức là Module
@@ -276,8 +279,8 @@ class Model(chainer.Chain):
 		xr = F.tanh(self.embedR(xp.array(rels,'i')))
 		neg = F.batch_l2_norm_squared(neg+xr) # trans E
 
-		return sum(pos+F.relu(self.threshold-neg))
-
+		# return sum(pos+F.relu(self.threshold-neg))
+		return sum(F.relu(self.threshold +pos- neg))
 	def get_scores(self,candidates,train_link,relations,aux_link,xp,mode): # tính toán điểm số cho các bộ ba ứng viên
 		entities = set()
 		for h,r,t,l in candidates:
@@ -297,3 +300,162 @@ class Model(chainer.Chain):
 		xr = F.tanh(self.embedR(xp.array(rels,'i')))
 		scores = F.batch_l2_norm_squared(diffs+xr)
 		return scores
+
+# muon doi sang mo hinh transH thi su dung doan code class Model sau va comment class Model phia tren
+
+# class Model(chainer.Chain):
+# 	def __init__(self, args):
+# 		super(Model, self).__init__(
+# 			embedE	= L.EmbedID(args.entity_size,args.dim), # tạo lớp nhúng entities với dim là kích thước vector đặc trưng
+# 			embedR	= L.EmbedID(args.rel_size,args.dim), # tạo lớp nhúng relations
+# 		)
+# 		# layerR là số lượng lớp trong mỗi tầng, order là số lượng tầng trong mô hình
+# 		linksB = [('b{}'.format(i), Tunnel(args.dim,args.layerR, args.rel_size, args.pooling_method)) for i in range(args.order)]
+# 		for link in linksB:
+# 			self.add_link(*link)
+# 		self.forwardB = linksB
+#
+# 		self.sample_size = args.sample_size
+# 		self.depth = args.order
+# 		self.threshold = args.threshold
+# 		if args.use_gpu: self.to_gpu()
+#
+#
+# 	def get_context(self,entities,train_link,relations,aux_link,order,xp): # xây dựng ngữ cảnh cho mô hình
+# 		if self.depth==order:
+# 			return self.embedE(xp.array(entities,'i'))
+#
+# 		assign = defaultdict(list)
+# 		neighbor_dict = defaultdict(int)
+# 		for i,e in enumerate(entities):
+# 			"""
+# 			(not self.is_known)
+# 				unknown setting
+# 			(not is_train)
+# 				in test time
+# 			order==0
+# 				in first connection
+# 			"""
+# 			if e in train_link:
+# 				if len(train_link[e])<=self.sample_size:	nn = train_link[e]
+# 				else:		nn = random.sample(train_link[e],self.sample_size)
+# 				if len(nn)==0:
+# 					print('something wrong @ modelS')
+# 					print('entity not in train_link',e,order)
+# 					sys.exit(1)
+# 			else:
+# 				if len(aux_link[e])<=self.sample_size:	nn = aux_link[e]
+# 				else:		nn = random.sample(aux_link[e],self.sample_size)
+# 				if len(nn)==0:
+# 					print('something wrong @ modelS')
+# 					print('entity not in aux_link',e,order)
+# 					sys.exit(1)
+# 			for k in nn:
+# 				if k not in neighbor_dict:
+# 					neighbor_dict[k] = len(neighbor_dict)	# (k,v)
+# 				assign[neighbor_dict[k]].append(i)
+# 		neighbor = []
+# 		for k,v in sorted(neighbor_dict.items(),key=lambda x:x[1]):
+# 			neighbor.append(k)
+# 		x = self.get_context(neighbor,train_link,relations,aux_link,order+1,xp)
+# 		x = getattr(self,self.forwardB[order][0])(x,neighbor,neighbor_dict,assign,entities,relations)
+# 		return x
+#
+# 	def train(self,positive,negative,train_link,relations,aux_link,xp): # tính toán loss
+# 		self.cleargrads()
+#
+# 		entities= set()
+# 		for h,r,t in positive:
+# 			entities.add(h)
+# 			entities.add(t)
+# 		for h,r,t in negative:
+# 			entities.add(h)
+# 			entities.add(t)
+#
+# 		entities = list(entities)
+#
+# 		x = self.get_context(entities,train_link,relations,aux_link,0,xp)
+# 		x = F.split_axis(x,len(entities),axis=0)
+# 		edict = dict()
+# 		for e,x in zip(entities,x):
+# 			edict[e]=x
+#
+# 		pos,rels,rels_hyperplane = [],[],[]
+# 		for h,r,t in positive:
+# 			rels.append(r)
+# 		xr = F.tanh(self.embedR(xp.array(rels,'i')))
+# 		hyperplane=F.normalize(xr)
+# 		for h,r,t in positive:
+# 			i=0
+# 			temp=F.reshape(hyperplane[i],(200,1))
+# 			edict[h]=edict[h]-(edict[h] @ temp )*temp.T
+# 			edict[t] = edict[t] - (edict[t] @ temp  ) * temp.T
+# 			dr=edict[h]-edict[t]
+# 			rels_hyperplane.append(dr)
+# 			pos.append(edict[h] - edict[t])
+# 			i=i+1
+#
+# 		pos = F.concat(pos, axis=0)
+# 		rels_hyperplane=F.concat(rels_hyperplane,axis=0)
+# 		# print(rels_hyperplane)
+# 		# pos = np.array(pos, dtype=np.float64)
+# 		# pos=chainer.Variable(pos)
+# 		# rels_hyperplane=np.array(rels_hyperplane,dtype=np.float32)
+# 		# rels_hyperplane = chainer.Variable(rels_hyperplane)
+# 		pos = F.batch_l2_norm_squared(pos+rels_hyperplane) # trans E
+#
+# 		neg, rels, rels_hyperplane = [], [], []
+# 		for h, r, t in negative:
+# 			rels.append(r)
+# 		xr = F.tanh(self.embedR(xp.array(rels, 'i')))
+# 		hyperplane = F.normalize(xr)
+# 		for h,r,t in negative:
+# 			i=0
+# 			temp = F.reshape(hyperplane[i], (200, 1))
+# 			edict[h] = edict[h] - (edict[h] @ temp ) * temp.T
+# 			edict[t] = edict[t] - (edict[t] @ temp  ) * temp.T
+# 			dr = edict[h] - edict[t]
+# 			rels_hyperplane.append(dr)
+# 			neg.append(edict[h] - edict[t])
+# 			i=i+1
+# 		neg = F.concat(neg,axis=0)
+# 		rels_hyperplane = F.concat(rels_hyperplane, axis=0)
+# 		# neg = np.array(neg, dtype=np.float32)
+# 		# neg = chainer.Variable(neg)
+# 		# rels_hyperplane = np.array(rels_hyperplane, dtype=np.float32)
+# 		# rels_hyperplane = chainer.Variable(rels_hyperplane)
+# 		neg = F.batch_l2_norm_squared(neg+rels_hyperplane) # trans E
+#
+# 		return sum(pos+F.relu(self.threshold-neg))
+# 		# return sum(F.relu(self.threshold +pos- neg))
+# 	def get_scores(self,candidates,train_link,relations,aux_link,xp,mode): # tính toán điểm số cho các bộ ba ứng viên
+# 		entities = set()
+# 		for h,r,t,l in candidates:
+# 			entities.add(h)
+# 			entities.add(t)
+# 		entities = list(entities)
+# 		xe = self.get_context(entities,train_link,relations,aux_link,0,xp)
+# 		xe = F.split_axis(xe,len(entities),axis=0)
+# 		edict = dict()
+# 		for e,x in zip(entities,xe):
+# 			edict[e]=x
+# 		diffs,rels,rels_hyperplane = [],[],[]
+# 		for h, r, t, l in candidates:
+# 			rels.append(r)
+# 		xr = F.tanh(self.embedR(xp.array(rels, 'i')))
+# 		hyperplane = F.normalize(xr)
+# 		for h,r,t,l in candidates:
+# 			i = 0
+# 			temp = F.reshape(hyperplane[i], (200, 1))
+# 			edict[h] = edict[h] - (edict[h] @ temp) * temp.T
+# 			edict[t] = edict[t] - (edict[t] @ temp) * temp.T
+# 			dr = edict[h] - edict[t]
+# 			rels_hyperplane.append(dr)
+# 			diffs.append(edict[h] - edict[t])
+# 			i = i + 1
+# 		diffs = F.concat(diffs,axis=0)
+# 		rels_hyperplane = F.concat(rels_hyperplane, axis=0)
+# 		# xr = F.tanh(self.embedR(xp.array(rels,'i')))
+# 		# rels_hyperplane = chainer.Variable(rels_hyperplane)
+# 		scores = F.batch_l2_norm_squared(diffs+rels_hyperplane)
+# 		return scores
